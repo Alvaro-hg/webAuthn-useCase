@@ -57,6 +57,7 @@ func main() {
 	r.POST("/login/begin", BeginLogin)
 	r.POST("/login/finish", FinishLogin)
 
+	r.Static("/static", "./static")
 	r.Any("/", Wrap(http.FileServer(http.Dir("./"))))
 
 	if err := r.Run(":8080"); err != nil {
@@ -68,14 +69,13 @@ func BeginRegistration(c *gin.Context) {
 
 	// get username/friendly Name
 	//username := c.Param("username")
-	var req struct {
-		Email string `json:"email"`
-	}
-	if err := c.BindJSON(&req); err != nil {
+
+	var user *User
+	if err := c.BindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	username := req.Email
+	username := user.Name
 
 	// get user
 	user, err := userDB.GetUser(username)
@@ -124,15 +124,12 @@ func BeginRegistration(c *gin.Context) {
 func FinishRegistration(c *gin.Context) {
 
 	// get username
-	var req struct {
-		Email string `json:"email"`
-	}
-	if err := c.BindJSON(&req); err != nil {
-		log.Println("Error in BindJSON:", err.Error())
+	var user *User
+	if err := c.BindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	username := req.Email
+	username := user.Name
 
 	// get user
 	user, err := userDB.GetUser(username)
