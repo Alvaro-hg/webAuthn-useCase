@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"github.com/gin-contrib/sessions"
+	"io"
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/gin-contrib/sessions"
 
 	"github.com/gin-contrib/sessions/memstore"
 	"github.com/gin-gonic/gin"
@@ -67,9 +70,6 @@ func main() {
 
 func BeginRegistration(c *gin.Context) {
 
-	// get username/friendly Name
-	//username := c.Param("username")
-
 	var user *User
 	if err := c.BindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -95,35 +95,66 @@ func BeginRegistration(c *gin.Context) {
 	options, sessionData, err := webAuthn.BeginRegistration(user, registerOptions)
 	if err != nil {
 		log.Println("Error in BeginRegistration:", err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusInternalServerError)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// store session data as marshaled JSON
-	/*err = sessionStore.SaveWebauthnSession("registration", sessionData, c.Request, c.Writer)
-	if err != nil {
-		log.Println(err)
-		jsonResponse(c.Writer, err.Error(), http.StatusInternalServerError)
-		return
-	}*/
 	session := sessions.Default(c)
 	session.Set("sessionData", sessionData)
 	err = session.Save()
 	if err != nil {
 		log.Println("Store sessionData:", err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusInternalServerError)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	//jsonResponse(c.Writer, options, http.StatusOK)
-	c.JSON(http.StatusOK, options)
+	c.JSON(http.StatusOK, options.Response)
 }
 
 func FinishRegistration(c *gin.Context) {
 
 	// get username
+	var finishRegistrationRequest *FinishRegistrationRequest
+	if err := c.BindJSON(&finishRegistrationRequest); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	username := finishRegistrationRequest.Name
+
+	// get user
+	user, err := userDB.GetUser(username)
+	// user doesn't exist
+	if err != nil {
+		log.Println(err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// load the session data
+	session := sessions.Default(c)
+	sessionData := session.Get("sessionData").(webauthn.SessionData)
+
+	response, err := reqToWebAuthn(c.Request, finishRegistrationRequest.Response)
+	if err != nil {
+		log.Println(err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	credential, err := webAuthn.FinishRegistration(user, sessionData, response)
+	if err != nil {
+		log.Println("Error in FinishRegistration:", err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	user.AddCredential(*credential)
+
+	c.JSON(http.StatusOK, gin.H{"verified": true})
+}
+
+func BeginLogin(c *gin.Context) {
+
 	var user *User
 	if err := c.BindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -133,64 +164,10 @@ func FinishRegistration(c *gin.Context) {
 
 	// get user
 	user, err := userDB.GetUser(username)
-	// user doesn't exist
-	if err != nil {
-		log.Println(err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusBadRequest)
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// load the session data
-	session := sessions.Default(c)
-	sessionData := session.Get("sessionData").(webauthn.SessionData)
-
-	credential, err := webAuthn.FinishRegistration(user, sessionData, c.Request)
-	if err != nil {
-		log.Println("Error in FinishRegistration:", err.Error())
-		//jsonResponse(c.Writer, err.Error(), http.StatusBadRequest)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	/*parsedResponse, err := protocol.ParseCredentialCreationResponse(c.Request)
-	if err != nil {
-		log.Println("Error in ParseCredentialCreationResponse:", err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	credential, err := webAuthn.CreateCredential(user, sessionData, parsedResponse)
-	if err != nil {
-		log.Println("Error in CreateCredential:", err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}*/
-
-	user.AddCredential(*credential)
-
-	//jsonResponse(c.Writer, "Registration Success", http.StatusOK)
-	c.JSON(http.StatusOK, gin.H{"status": "registration successful"})
-}
-
-func BeginLogin(c *gin.Context) {
-
-	// get username
-	//username := c.Param("username")
-	var req struct {
-		Email string `json:"email"`
-	}
-	if err := c.BindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	username := req.Email
-
-	// get user
-	user, err := userDB.GetUser(username)
 
 	// user doesn't exist
 	if err != nil {
 		log.Println(err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusBadRequest)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -199,44 +176,31 @@ func BeginLogin(c *gin.Context) {
 	options, sessionData, err := webAuthn.BeginLogin(user)
 	if err != nil {
 		log.Println(err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusInternalServerError)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// store session data as marshaled JSON
-	/*err = sessionStore.SaveWebauthnSession("authentication", sessionData, c.Request, c.Writer)
-	if err != nil {
-		log.Println(err)
-		jsonResponse(c.Writer, err.Error(), http.StatusInternalServerError)
-		return
-	}*/
 	session := sessions.Default(c)
 	session.Set("sessionData", sessionData)
 	err = session.Save()
 	if err != nil {
 		log.Println("Store sessionData:", err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusInternalServerError)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	//jsonResponse(c.Writer, options, http.StatusOK)
-	c.JSON(http.StatusOK, options)
+	c.JSON(http.StatusOK, options.Response)
 }
 
 func FinishLogin(c *gin.Context) {
 
-	// get username
-	//username := c.Param("username")
-	var req struct {
-		Email string `json:"email"`
-	}
-	if err := c.BindJSON(&req); err != nil {
+	var finishAuthenticationRequest *FinishAuthenticationRequest
+
+	if err := c.BindJSON(&finishAuthenticationRequest); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	username := req.Email
+	username := finishAuthenticationRequest.Name
 
 	// get user
 	user, err := userDB.GetUser(username)
@@ -244,25 +208,25 @@ func FinishLogin(c *gin.Context) {
 	// user doesn't exist
 	if err != nil {
 		log.Println(err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusBadRequest)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	response, err := reqToWebAuthn(c.Request, finishAuthenticationRequest.Response)
+	if err != nil {
+		log.Println(err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
 	// load the session data
-	/*sessionData, err := sessionStore.GetWebauthnSession("authentication", c.Request)
-	if err != nil {
-		log.Println(err)
-		jsonResponse(c.Writer, err.Error(), http.StatusBadRequest)
-		return
-	}*/
 	session := sessions.Default(c)
 	sessionData := session.Get("sessionData").(webauthn.SessionData)
 
 	// in an actual implementation, we should perform additional checks on
 	// the returned 'credential', i.e. check 'credential.Authenticator.CloneWarning'
 	// and then increment the Credentials counter
-	_, err = webAuthn.FinishLogin(user, sessionData, c.Request)
+	_, err = webAuthn.FinishLogin(user, sessionData, response)
 	if err != nil {
 		log.Println(err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -270,23 +234,32 @@ func FinishLogin(c *gin.Context) {
 	}
 
 	// handle successful login
-	//jsonResponse(c.Writer, "Login Success", http.StatusOK)
-	c.JSON(http.StatusOK, gin.H{"status": "login successful"})
-}
+	c.JSON(http.StatusOK, gin.H{"verified": true})
 
-// from: https://github.com/duo-labs/webauthn.io/blob/3f03b482d21476f6b9fb82b2bf1458ff61a61d41/server/response.go#L15
-func jsonResponse(w http.ResponseWriter, d interface{}, c int) {
-	dj, err := json.Marshal(d)
-	if err != nil {
-		http.Error(w, "Error creating JSON response", http.StatusInternalServerError)
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(c)
-	fmt.Fprintf(w, "%s", dj)
 }
 
 func Wrap(h http.Handler) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		h.ServeHTTP(c.Writer, c.Request)
 	}
+}
+
+func reqToWebAuthn(r *http.Request, response interface{}) (req *http.Request, err error) {
+	var (
+		body []byte
+	)
+	if body, err = json.Marshal(response); err == nil {
+
+		req = &http.Request{
+			Method:        r.Method,
+			URL:           r.URL,
+			Proto:         r.Proto,
+			ProtoMajor:    r.ProtoMajor,
+			ProtoMinor:    r.ProtoMinor,
+			Header:        r.Header,
+			Body:          io.NopCloser(bytes.NewBuffer(body)),
+			ContentLength: int64(len(body)),
+		}
+	}
+	return
 }
