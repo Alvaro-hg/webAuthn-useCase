@@ -1,6 +1,6 @@
 # WebAuthn basic Login and Register example
 
-This is a modification of the [WebAuthn Basic Client/Server Example (go)](https://github.com/hbolimovsky/webauthn-example) proyect. This version makes use of the Gin Web Framwork.
+This is a modification of the [WebAuthn Basic Client/Server Example (go)](https://github.com/hbolimovsky/webauthn-example) project. This version makes use of the Gin Web Framework adn the new go-webauthn library.
 
 ## Set-up
 
@@ -23,7 +23,7 @@ $ go run .
 
 Go to [localhost:8080](http://localhost:8080).
 
-If the web browser you are using doesn't support WebAuthn switch to another one like Chrome or Safari.
+If the web browser you are using doesn't support WebAuthn switch to another one like Chrome, Safari or Edge.
 
 #### Register
 
