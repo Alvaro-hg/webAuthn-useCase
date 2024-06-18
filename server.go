@@ -79,7 +79,6 @@ func BeginRegistration(c *gin.Context) {
 	options, sessionData, err := webAuthn.BeginRegistration(user, registerOptions)
 	if err != nil {
 		log.Println("Error in BeginRegistration:", err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusInternalServerError)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -107,7 +106,6 @@ func FinishRegistration(c *gin.Context) {
 	// user doesn't exist
 	if err != nil {
 		log.Println(err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusBadRequest)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -119,7 +117,6 @@ func FinishRegistration(c *gin.Context) {
 	credential, err := webAuthn.FinishRegistration(user, sessionData, c.Request)
 	if err != nil {
 		log.Println("Error in FinishRegistration:", err.Error())
-		//jsonResponse(c.Writer, err.Error(), http.StatusBadRequest)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -148,7 +145,6 @@ func BeginLogin(c *gin.Context) {
 	options, sessionData, err := webAuthn.BeginLogin(user)
 	if err != nil {
 		log.Println(err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusInternalServerError)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -177,7 +173,6 @@ func FinishLogin(c *gin.Context) {
 	// user doesn't exist
 	if err != nil {
 		log.Println(err)
-		//jsonResponse(c.Writer, err.Error(), http.StatusBadRequest)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

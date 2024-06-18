@@ -1,6 +1,6 @@
 # WebAuthn basic Login and Register example
 
-This is a modification of the [WebAuthn Basic Client/Server Example (go)](https://github.com/hbolimovsky/webauthn-example) project. This version makes use of the Gin Web Framework adn the new go-webauthn library.
+This is a modification of the [WebAuthn Basic Client/Server Example (go)](https://github.com/hbolimovsky/webauthn-example) project. This version makes use of the Gin Web Framework and the new go-webauthn library.
 
 ## Set-up
 
